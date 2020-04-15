@@ -2,6 +2,7 @@
 
 """This is importing some of the in-built functions"""
 import os
+import sqlite3
 from collections import defaultdict
 from prettytable import PrettyTable
 from typing import Dict,Set,List,Iterator,Tuple,DefaultDict
@@ -11,18 +12,20 @@ from HW08_Krupali_Italiya import file_reader
 class University:
     """ Store the records of students and instructors """
 
-    def __init__(self, dir:str, hd=True):
+    def __init__(self, dir:str,db_path:str, hd=True):
         """ Initialize directory and dictionary for students and instructor"""
         self._dir:str = dir
+        self._db_path:str=db_path
         self._students:Dict[str,Student] = dict()
         self._instructors:Dict[str,Instructor] = dict()
         self._majors:Dict[str,Major] = dict()
+        
 
         try:
-            self._get_majors(os.path.join(dir, "majors.txt"))
-            self._get_students(os.path.join(dir, "students.txt"))
-            self._get_instructors(os.path.join(dir, "instructors.txt"))
-            self._get_grades(os.path.join(dir, "grades.txt"))
+            self._get_majors(os.path.join(dir, "majors2.txt"))
+            self._get_students(os.path.join(dir, "students2.txt"))
+            self._get_instructors(os.path.join(dir, "instructors2.txt"))
+            self._get_grades(os.path.join(dir, "grades2.txt"))
 
         except (FileNotFoundError , ValueError) as v:
             print(v)
@@ -36,6 +39,9 @@ class University:
 
                 print("Majors Table")
                 self.majors_table()
+
+                print("Student Grade Summary table")
+                self.grade_table()
 
 
     def _get_majors(self, path):
@@ -52,7 +58,7 @@ class University:
     def _get_students(self, path):
         """ Student detail are read using file reading gen and added to dictionary """
         try:
-            stu_info: Iterator[Tuple[str]] = file_reader(path, 3, sep=';', header=True)
+            stu_info: Iterator[Tuple[str]] = file_reader(path, 3, sep='\t', header=True)
             for cwid, name, major in stu_info:
                 if major not in self._majors:
                     print(f"Student {cwid} '{name}' has unknown major '{major}'")
@@ -64,7 +70,7 @@ class University:
     def _get_instructors(self, path:str):
         """ Get the instructor details from the file and store it in the dictionary"""
         try:
-            ins_info: Iterator[Tuple[str]] = file_reader(path, 3, sep='|', header=True)
+            ins_info: Iterator[Tuple[str]] = file_reader(path, 3, sep='\t', header=True)
             for cwid, name, dept in ins_info:
                 self._instructors[cwid] = Instructor(cwid, name, dept)
         except ValueError as v:
@@ -73,7 +79,7 @@ class University:
     def _get_grades(self, path:str):
         """ Get the student grades details from the file and store it in the dictionary"""
         try:
-            grade_info = file_reader(path, 4, sep='|', header=True)
+            grade_info = file_reader(path, 4, sep='\t', header=True)
             for stu_cwid, course, grade, inst_cwid in grade_info:
                 if stu_cwid in self._students:
                     self._students[stu_cwid].add_course(course, grade)
@@ -86,6 +92,19 @@ class University:
                     print(f"Grade for unknown instructor {inst_cwid}")
         except ValueError as v:
             print(v)
+
+    def student_summary_grade_db(self,db_file: str):
+        """ New student summary table from database """
+        try:
+            db: sqlite3.Connection = sqlite3.connect(db_file)
+            query: str = "SELECT s.Name, s.CWID, g.Course, g.Grade, i.Name AS 'Instructor' " \
+                        "FROM grades2 g JOIN students2 s ON g.StudentCWID = s.CWID " \
+                        "JOIN instructors2 i ON g.InstructorCWID = i.CWID ORDER BY s.Name"
+            for name, cwid, course, grade, instructor in db.execute(query):
+                yield [name, cwid, course, grade, instructor]
+        except sqlite3.OperationalError as e:
+            print(e)
+    
 
     def student_table(self):
         """ Pretty table for the students """
@@ -106,7 +125,7 @@ class University:
             for row in instructor.ptable_row():
                 Table.add_row(row)
         print(Table)
-
+       
     def majors_table(self):
         """ Pretty table for majors """
         Table:PrettyTable = PrettyTable(field_names=Major.titles)
@@ -115,6 +134,12 @@ class University:
             Table.add_row(major.ptable_row())
         print(Table)
 
+    def grade_table(self):
+        Table: PrettyTable = PrettyTable(field_names=["Name", "CWID", "Course", "Grade", "Instructor"])
+        for row in self.student_summary_grade_db(self._db_path):
+            Table.add_row(row)
+        print(Table) 
+        
 
 class Major:
     """ Major Class """
@@ -135,7 +160,6 @@ class Major:
             raise ValueError("Course not found")
 
     
-
     def remaining_courses(self, completed):
         """Adding remaining required  courses as well as remaining electives"""
         completed = {course for course, grade in completed.items() if grade in Major.grades_given}
@@ -145,8 +169,6 @@ class Major:
         if self._electives.intersection(completed):
             rem_electives = set()
        
-
-
         return self._dept, completed, rem_required, rem_electives
 
     def ptable_row(self):
@@ -207,9 +229,10 @@ class Instructor:
             yield [self._cwid, self._name, self._dept, course, count]
 
 
+
 def main():
     """ Pass the directory to Repository class """
-    University("C:/Users/0609k/OneDrive/Desktop/Python/Txt_file10")
+    University("C:/Users/0609k/OneDrive/Desktop/Python/Txt_file11","C:/Users/0609k/OneDrive/Desktop/Python/810_start_k.db")
 
 if __name__ == '__main__':
     """ Run main function on start """
